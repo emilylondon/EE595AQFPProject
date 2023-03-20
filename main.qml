@@ -6,7 +6,7 @@ ApplicationWindow {
     visible: true
     width: 700
     height: 500
-    title: "ADFQMarginMinimizer"
+    title: "AQFPMarginMinimizer"
 
     Rectangle {
         anchors.fill: parent
@@ -29,7 +29,7 @@ ApplicationWindow {
             spacing: 10
 
             Text {
-                text: "ADFQ Margin Minimizer"
+                text: "AQFP Margin Minimizer"
                 font.pixelSize: 24
                 horizontalAlignment: Text.AlignHCenter
             }
