@@ -44,7 +44,10 @@ ApplicationWindow {
 
             Button {
                 text: "Load Simulation" 
-                onClicked: label.text = "Loading now" 
+                onClicked: {
+                    actions.loadButtonClicked();
+                    label.text = "Loading now";
+                }
             }
 
             Text {
