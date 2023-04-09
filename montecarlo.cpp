@@ -6,7 +6,7 @@
 
 #define HIGH 0.000005
 #define LOW -0.000005
-
+#define ERROR(a, b) ((a-b)/b)
 using namespace std;
 
 
@@ -22,16 +22,24 @@ void csv_write(int start_ind, vector<float> time, vector<float> rin, vector<floa
 
 
 int local_max(vector<float> signal){
-  float max = INT_MIN;
+  int n = signal.size()/6;
+  float thresh = .00001;
+  float max = -100;
   int maxind = 900;
-  for (int i = 900; i < 1400; i++){
-    if (signal[i] > max){
+  float thresh_reached = false;
+  for (int i = 0; i < n; i++){
+    if (signal[i] > thresh && !thresh_reached){
+      thresh_reached = true;
+    }
+    else if (signal[i] < thresh && thresh_reached){
+      return maxind;
+    }
+
+    if (signal[i]>max){
       max = signal[i];
       maxind = i;
     }
   }
-  
-  return maxind;
 }
 
 int find_stability_point(vector<float> sig_in){
@@ -56,7 +64,7 @@ int find_stability_point(vector<float> sig_in){
 }
 
 bool satisfies_BE(float Iout, float Iin){
-  return (Iout*Iin > 0) && (abs(Iout)>abs(Iin)) ? true: false;  //condition for no bit error
+  return (Iout*Iin > 0) && (abs(ERROR(Iout, Iin))<.1) ? true: false;  //condition for no bit error
 }
 
 int main() {
@@ -73,18 +81,20 @@ std::vector<float> time = josimOut.GetColumn<float>("time");
 std::vector<float> rIn = josimOut.GetColumn<float>("I(RIN)");
 std::vector<float> Lin = josimOut.GetColumn<float>("I(LIN|XI4)");
 std::vector<float> Lout = josimOut.GetColumn<float>("I(LOUT|XI4)");
-int timeSize = Lout.size();
-std::cout << timeSize << std::endl;
+
 
 // find local max ind running time of lin:x4 after the 1.8xe-10 mark so around the 900th instance 
 int local_max_ind_lin = local_max(Lin), local_max_ind_lout = local_max(Lout);
 cout << "Lin first local_max = " << local_max_ind_lin << endl;
 cout << "Lout first local_max =  " << local_max_ind_lout << endl;
-int diff = local_max_ind_lout - local_max_ind_lin;
 
 // subtract the first time from the second one 
+int diff = local_max_ind_lout - (local_max_ind_lin+1);
+
+//shift the Lout signal to the left 
+Lout.erase(Lout.begin(), Lout.begin() + diff);
 for (int i = 0; i < diff; i++){
-  Lin.insert(Lin.begin(), 0);
+  Lout.push_back(0);
 }
 
 int newSize = Lout.size()-diff;
@@ -106,6 +116,7 @@ for (int i = find_stability_point(rIn); i < newSize; i++){
 
   cout << "Total events: " << total_events << endl;
   cout << "Total correct: " << total_correct << endl;
+  //csv_write(find_stability_point(rIn), time, rIn, Lin, Lout);
   csv_write(find_stability_point(rIn), time, rIn, Lin, Lout);
   return 0;
 }
