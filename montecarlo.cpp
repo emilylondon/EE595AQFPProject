@@ -2,121 +2,73 @@
 #include <random>
 #include <fstream>
 #include <vector>
+#include <map>
 #include "rapidcsv.h"
+#include "ber.h"
+#include "montecarlo.h"
 
-#define HIGH 0.000005
-#define LOW -0.000005
-#define ERROR(a, b) ((a-b)/b)
 using namespace std;
 
+//gaussian distribution for amount of temp difference from ideal (4.2 K)
+//inputs: total number of samples
+//        file name of the circuit to vary  
 
-void csv_write(int start_ind, vector<float> time, vector<float> rin, vector<float> lin, vector<float> lout){
+/**
+ * Runs Montecarlo simulation of a set size from an input circuit to determine bit error rate 
+ * @param fname Input circuit file name 
+ * @param s Simulation size 
+**/
+Montecarlo::Montecarlo(string fname, int s){
+  orig_name = fname;
+  simulations = s;
+  normal_distribution<double> distribute(4.2, 2.95);
+  temp_distribute = distribute;
+  default_random_engine generator;
+
+  //generate S number of Josim simulations at temperature from normal distribution 
+  for (int i = 0; i<simulations; i++){
+    temps.push_back(temp_distribute(generator));
+    //run python script with the name being something like "orig_name+i"
+    in_names.push_back(orig_name+to_string(i));
+    BER b(in_names[i]); //finds bit error rate for that file 
+    bit_error_rates.push_back(b.find_ber());
+    //set temperature error rate map values
+    if (temp_ber.count(temps[i]) > 0){
+      vector<double> vals;
+      vals.push_back(bit_error_rates[i]);
+      vals.push_back(1);
+    }
+    else {
+      temp_ber[temps[i]][0] += bit_error_rates[i];
+      temp_ber[temps[i]][1] += 1;
+    }
+  }
+}
+
+/**
+ * Outputs total simulation results to a csv file. Best if used for 
+ * scatter plot of overall simulation results.
+**/
+void Montecarlo::output_simulation_results(){
    fstream fout;
-   fout.open("processed_buffer.csv", ios::out | ios::app);
-   fout << "time,\"I(RIN)\",\"I(LIN|XI4)\",\"I(LOUT|XI4)\"" << "\n";
-   for (int i = start_ind; i < lout.size(); i++){
-      fout << time[i] << "," << rin[i] << "," << lin[i] << "," << lout[i] << "\n";
+   string fout_name = orig_name.substr(0, orig_name.length()-3) + "_scatter.csv";
+   fout.open(fout_name, ios::out | ios::app);
+   fout << "item,temp,ber" << "\n";
+   for (int i = 0; i < simulations; i++){
+      fout << i << "," << temps[i] << "," << bit_error_rates[i] << "\n";
    }
 }
 
-
-
-int local_max(vector<float> signal){
-  int n = signal.size()/6;
-  float thresh = .00001;
-  float max = -100;
-  int maxind = 900;
-  float thresh_reached = false;
-  for (int i = 0; i < n; i++){
-    if (signal[i] > thresh && !thresh_reached){
-      thresh_reached = true;
-    }
-    else if (signal[i] < thresh && thresh_reached){
-      return maxind;
-    }
-
-    if (signal[i]>max){
-      max = signal[i];
-      maxind = i;
-    }
-  }
-}
-
-int find_stability_point(vector<float> sig_in){
-  int last_switch;
-  float tol = 2e-06;
-  int state = 0; //low
-  for (int i = 0; i < sig_in.size(); i++){
-    if (state == 0){
-      if (sig_in[i] > HIGH-tol){
-        state = 1;
-        last_switch = i;
-      }
-    }
-    else {
-      if (sig_in[i] < LOW+tol){
-        state = 0;
-        last_switch = i;
-      }
-    }
-  }
-  return last_switch;
-}
-
-bool satisfies_BE(float Iout, float Iin){
-  return (Iout*Iin > 0) && (abs(ERROR(Iout, Iin))<.1) ? true: false;  //condition for no bit error
-}
-
-int main() {
-
-long total_events = 0;
-long total_correct = 0; 
-
-// run josim x times
-// process output file:
-
-// read csv where we want into 3 1d vectors 
-rapidcsv::Document josimOut("examples/ex_pi_DQFP_buffer_chan.csv");
-std::vector<float> time = josimOut.GetColumn<float>("time");
-std::vector<float> rIn = josimOut.GetColumn<float>("I(RIN)");
-std::vector<float> Lin = josimOut.GetColumn<float>("I(LIN|XI4)");
-std::vector<float> Lout = josimOut.GetColumn<float>("I(LOUT|XI4)");
-
-
-// find local max ind running time of lin:x4 after the 1.8xe-10 mark so around the 900th instance 
-int local_max_ind_lin = local_max(Lin), local_max_ind_lout = local_max(Lout);
-cout << "Lin first local_max = " << local_max_ind_lin << endl;
-cout << "Lout first local_max =  " << local_max_ind_lout << endl;
-
-// subtract the first time from the second one 
-int diff = local_max_ind_lout - (local_max_ind_lin+1);
-
-//shift the Lout signal to the left 
-Lout.erase(Lout.begin(), Lout.begin() + diff);
-for (int i = 0; i < diff; i++){
-  Lout.push_back(0);
-}
-
-int newSize = Lout.size()-diff;
-// only calculate after rin is stable/high
-    //check all of rin mark the time where changes to up/down occur 
-    //set that time as our start time 
-
-// go through and check the conditions Lout x Lin > 0 and abs Lout > abs Lin 
-for (int i = find_stability_point(rIn); i < newSize; i++){
-  total_events++;
-  if (satisfies_BE(Lout[i], Lin[i])){
-    total_correct++;
-  }
-}
-
-
-// in theory rerun this with different noise/temp parameters 
-// delete/rewrite output file 
-
-  cout << "Total events: " << total_events << endl;
-  cout << "Total correct: " << total_correct << endl;
-  //csv_write(find_stability_point(rIn), time, rIn, Lin, Lout);
-  csv_write(find_stability_point(rIn), time, rIn, Lin, Lout);
-  return 0;
+/**
+ * Outputs ber vs temp results to a csv file. Best if used for 
+ * the plot of BER vs temp 
+**/
+void Montecarlo::output_temp_ber(){
+   fstream fout;
+   string fout_name = orig_name.substr(0, orig_name.length()-3) + "_temp_ber.csv";
+   fout.open(fout_name, ios::out | ios::app);
+   fout << "temp,ber" << "\n";
+   for (auto i = temp_ber.begin(); i != temp_ber.end(); i++){
+      fout << i->first << "," << i->second[0]/i->second[1] << "\n";
+   }
 }
