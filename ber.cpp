@@ -28,12 +28,13 @@ BER::BER(string fname){
  * Output the normalized Iout and Iin to compare the outputs and ensure the signal is aligned properly. 
  * @param start_ind The starting point for signal measurement after Rin has settled 
 **/
-void BER::csv_write(int start_ind){
+void BER::csv_write(){
    fstream fout;
+   system("rm processed_buffer.csv");
    fout.open("processed_buffer.csv", ios::out | ios::app);
-   fout << "time,\"I(RIN)\",\"I(LIN|XI4)\",\"I(LOUT|XI4)\"" << "\n";
-   for (int i = start_ind; i < Lout.size(); i++){
-      fout << time[i] << "," << rIn[i] << "," << Lin[i] << "," << Lout[i] << "\n";
+   fout << "time,\"I(LIN|XI4)\",\"I(LOUT|XI4)\"" << "\n";
+   for (int i = 0; i < timeD.size(); i++){
+      fout << timeD[i] << "," << LinD[i] << "," << LoutD[i] << "\n";
    }
 }
 
@@ -43,9 +44,9 @@ void BER::csv_write(int start_ind){
 **/ 
 int BER::local_max(vector<float> signal){
   int n = signal.size()/6;
-  float thresh = .00001;
+  float thresh = .00001; 
   float max = -100;
-  int maxind = 900;
+  int maxind = -1;
   float thresh_reached = false;
   for (int i = 0; i < n; i++){
     if (signal[i] > thresh && !thresh_reached){
@@ -93,7 +94,7 @@ int BER::find_stability_point(vector<float> sig_in){
  * @param Iin Input signal value
 **/
 bool BER::satisfies_BE(float Iout, float Iin){
-  return (Iout*Iin > 0) && (abs(ERROR(Iout, Iin))<.1) ? true: false;  //condition for no bit error
+  return abs(Iout- Iin)<.00005 ? true: false;  //condition for no bit error
 }
 
 float BER::find_ber(){
@@ -106,27 +107,71 @@ float BER::find_ber(){
     for (int i = 0; i < diff; i++){
     Lout.push_back(0);
     }
-    int newSize = Lout.size()-diff;
+    newSize = Lout.size()-diff;
 
     // only calculate after rin is stable/high
     //check all of rin mark the time where changes to up/down occur 
     //set that time as our start time 
 
     // go through and check the conditions Lout x Lin > 0 and abs Lout > abs Lin 
-    int start_ind = find_stability_point(rIn);
-    for (int i = start_ind; i < newSize; i++){
+    start_ind = find_stability_point(rIn);
+    adc();
+    for (int i = 0; i < timeD.size(); i++){
         total_events++;
-        if (satisfies_BE(Lout[i], Lin[i])){
+        if (satisfies_BE(LoutD[i], LinD[i])){
             total_correct++;
         }
     }
-    csv_write(start_ind);
+    csv_write();
     return 1.0-(float)total_correct/(float)total_events;
 }
-/* 
+
+void BER::adc(){
+  //sampling t interval = 0.1 nanosecond 
+  float t_samp = 0.1e-9;
+  float delta = 0;
+  float t_prev = time[start_ind];
+  vector<float> quant_levels = {-20e-6, -12e-6, -4e-6, 4e-6, 12e-6};
+  timeD.push_back(time[start_ind]);
+  bool in_found = false, out_found = false; 
+  for (int j = quant_levels.size(); j >= 0; j--){
+    if (Lin[start_ind] >= quant_levels[j] && !in_found){
+      in_found = true; 
+      LinD.push_back(quant_levels[j]);
+    }
+    if (Lout[start_ind] >= quant_levels[j] && !out_found){
+      out_found = true; 
+      LoutD.push_back(quant_levels[j]);
+    }
+  }
+
+  for (int i = start_ind; i < newSize; i++){
+    if (delta >= t_samp){
+      delta = 0;
+      bool in_found = false, out_found = false; 
+      for (int j = quant_levels.size(); j >= 0; j--){
+        if (Lin[i] >= quant_levels[j] && !in_found){
+          in_found = true; 
+          LinD.push_back(quant_levels[j]);
+        }
+        if (Lout[i] >= quant_levels[j] && !out_found){
+          out_found = true; 
+          LoutD.push_back(quant_levels[j]);
+        }
+      }
+      timeD.push_back(timeD[timeD.size()-1]+t_samp);
+    }
+
+    else {
+      delta += time[i]-t_prev;
+      t_prev = time[i];
+    }
+  }
+}
+/*
 int main() {
-    BER b("examples/ex_pi_DQFP_buffer_chan.csv");
+    BER b("ex_pi_DQFP_buffer_chan_410.csv");
     float ber = b.find_ber();
     cout << "Bit error rate is " << ber << endl;
 }
-*/ 
+ */

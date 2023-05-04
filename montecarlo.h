@@ -7,6 +7,7 @@ using namespace std;
 class Montecarlo{
     public:
         Montecarlo(string fname, int s);
+        ~Montecarlo();
         void output_simulation_results();
         void output_temp_ber();
     private:
