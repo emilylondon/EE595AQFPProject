@@ -18,34 +18,57 @@ print(PYQT_VERSION_STR)
 
 app = QGuiApplication(sys.argv)
 
-def plotResults(outputFile):
-    time = []
-    data = []
+def plotResults(output, scatter):
+    temp = []
+    bit_error = []
     labels = set()
-    with open(outputFile, 'r') as csvFile:
+
+    temp1 = []
+    bit_error1 = []
+    labels1 = set()
+
+    #reads the temperature plot csv
+    with open(output, 'r') as csvFile1:
+        reader1 = csv.DictReader(csvFile1)
+        labels1 = reader1.fieldnames
+        for row in reader1:
+            try:
+                temp1.append(float(row[labels1[0]]))
+                bit_error1.append(float(row[labels1[1]]))
+            except: 
+                print("First row")
+    csvFile1.close()
+    
+    #reads the scatter plot csv
+    with open(scatter, 'r') as csvFile:
         reader = csv.DictReader(csvFile)
         labels = reader.fieldnames
-        print(reader.fieldnames)
-        data.append([])
         for row in reader:
-            time.append(float(row[labels[0]]))
-            for var in range(1,len(labels)):
-                data.append([])
-                data[var].append(float(row[labels[var]]))
+            try:
+                temp.append(float(row[labels[1]]))
+                bit_error.append(float(row[labels[2]]))
+            except: 
+                print("First row")
     csvFile.close()
 
-    N = len(labels) - 1
-    cols = int(math.ceil(N / 4))
-    rows = int(math.ceil(N / cols))
+    cols = 1
+    rows = 2
 
     gs = gridspec.GridSpec(rows, cols)
     fig = pl.figure()
-    for var in range(1,len(labels)):
-        ax = fig.add_subplot(gs[var - 1])
-        ax.plot(time, data[var])
-        ax.set_xlabel(labels[0])
-        ax.set_ylabel(labels[var])
 
+    ax = fig.add_subplot(gs[0])
+    ax.scatter(temp, bit_error)
+    ax.set_xlabel(labels[1])
+    ax.set_ylabel(labels[2])
+
+    print(temp1)
+
+    ax2 = fig.add_subplot(gs[1])
+    ax2.plot(temp1, bit_error1)
+    ax2.set_xlabel(labels1[0])
+    ax2.set_xlabel(labels1[1])
+    
     fig.set_tight_layout(True)
     fig.show()
     input()
@@ -54,12 +77,13 @@ def plotResults(outputFile):
 def runMinimizer(netlistFile):
     #os.system("cd results")
     nSize = len(netlistFile)
-    outputFileName = netlistFile[:nSize-3]
-    outputFileName += "csv"
+    outputFileName = netlistFile[:nSize-4]
+    outputTempGraphFileName = outputFileName + "_temp_ber.csv"
+    outputScatterFileName = outputFileName + "_scatter.csv"
     os.system("cd $")
-    cmd = "josim -o " + outputFileName + " " +  netlistFile + " -V 1"
+    cmd = "./montecarlo " + netlistFile + " " + str(10)
     subprocess.call(cmd, shell = True)
-    plotResults(outputFileName)
+    plotResults(outputTempGraphFileName, outputScatterFileName)
 
 
 class FileExplorer(QObject):
@@ -73,6 +97,10 @@ class FileExplorer(QObject):
         if fileFinder.exec():
             files = fileFinder.selectedFiles()
             netlist = files[0]
+            netlist = os.path.relpath(netlist, "Users/emilylondon/College/EE595/EE595SFQProject")
+            netlist = netlist.replace('../', '')
+            #netlist = '/' + netlist
+
             """
             if ".txt" in files[0]:
                 logic = files[0]
@@ -93,17 +121,16 @@ class FileExplorer(QObject):
         fileFinder.setFileMode(QFileDialog.FileMode.ExistingFiles)
         if fileFinder.exec():
             files = fileFinder.selectedFiles()
-            output = files[0]
-            """
-            if ".txt" in files[0]:
-                logic = files[0]
-                netlist = files[1]
+            
+            if "scatter" in files[0]:
+                scatter = files[0]
+                output = files[1]
             else:
-                netlist = files[0]
-                logic = files[1]
-            """
+                output = files[0]
+                scatter = files[1]
+    
             print("Files selected")
-            plotResults(output)
+            plotResults(scatter, output)
         else:
             print("No files selected")
 
