@@ -15,16 +15,16 @@ def edit_file(input_file: str, new_temp: float, index: int) -> str:
         str: The path to the output file.
 
     """
-    with open(input_file, 'r') as f:
-        lines = f.readlines()
+
 
     output_file = input_file.split(".")[0] + "_" + str(index) + "." + input_file.split(".")[1]
-    with open(output_file, 'w') as f:
-        for line in lines:
-            if line.startswith('.temp'):
-                f.write(f'.temp {new_temp}\n')
-            else:
-                f.write(line)
+    
+    print(input_file)
+    print(output_file)
+
+    print(new_temp)
+
+    subprocess.run(['python3', 'noise_insert.py', input_file, '-o', output_file, '-t', str(new_temp)])
 
     return output_file
 
